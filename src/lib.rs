@@ -49,7 +49,7 @@ pub enum RequestKind {
     #[serde(rename = "prompts/get", rename_all = "camelCase")]
     PromptsGet {
         name: String,
-        arguments: Option<Map<String, Value>>,
+        arguments: Option<Value>,
     },
     #[serde(rename = "tools/list", rename_all = "camelCase")]
     ToolsList,
@@ -163,7 +163,7 @@ pub trait ToolExecutor {
 
 #[async_trait]
 pub trait PromptExecutor {
-    async fn execute(&self, arguments: Option<Map<String, Value>>) -> Result<String>;
+    async fn execute(&self, arguments: Option<Value>) -> Result<String>;
     fn to_prompt(&self) -> Prompt;
 }
 
