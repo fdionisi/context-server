@@ -20,6 +20,18 @@ pub struct EntityInfo {
     pub version: String,
 }
 
+impl<S> From<(S, S)> for EntityInfo
+where
+    S: Into<String>,
+{
+    fn from((name, version): (S, S)) -> Self {
+        Self {
+            name: name.into(),
+            version: version.into(),
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum LoggingLevel {
     Debug,
@@ -35,12 +47,19 @@ pub enum ContextServerMethod {
     Reqest(RequestKind),
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum Version {
+    Number(u32),
+    String(String),
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(tag = "method", content = "params")]
 pub enum RequestKind {
     #[serde(rename = "initialize", rename_all = "camelCase")]
     Initialize {
-        protocol_version: u32,
+        protocol_version: String,
         capabilities: ClientCapabilities,
         client_info: EntityInfo,
     },
@@ -130,11 +149,34 @@ pub struct ContextServerRpcError {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SamplingMessage {
+    pub role: SamplingRole,
+    pub content: SamplingContent,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SamplingRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum SamplingContent {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image")]
+    Image { data: String, mime_type: String },
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(untagged)]
 pub enum ContextServerResult {
     #[serde(rename_all = "camelCase")]
     Initialize {
-        protocol_version: u32,
+        protocol_version: String,
         server_info: EntityInfo,
         capabilities: ServerCapabilities,
     },
@@ -142,7 +184,8 @@ pub enum ContextServerResult {
         prompts: Vec<Prompt>,
     },
     PromptsGet {
-        prompt: String,
+        description: Option<String>,
+        messages: Vec<SamplingMessage>,
     },
     ToolsList {
         tools: Vec<Tool>,
@@ -163,6 +206,7 @@ pub trait ToolExecutor {
 
 #[async_trait]
 pub trait PromptExecutor {
+    fn name(&self) -> &str;
     async fn execute(&self, arguments: Option<Value>) -> Result<String>;
     fn to_prompt(&self) -> Prompt;
 }
@@ -197,22 +241,44 @@ pub trait NotificationDelegate {
     }
 }
 
+#[derive(Default)]
+pub struct PromptRegistry(HashMap<String, Arc<dyn PromptExecutor>>);
+
+impl PromptRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register(&mut self, prompt: Arc<dyn PromptExecutor>) {
+        self.0.insert(prompt.name().to_string(), prompt);
+    }
+
+    pub fn list(&self) -> Vec<Prompt> {
+        self.0.values().map(|p| p.to_prompt()).collect()
+    }
+
+    pub async fn execute(&self, prompt: &str, arguments: Option<Value>) -> Result<String> {
+        let prompt = self
+            .0
+            .get(prompt)
+            .ok_or_else(|| anyhow!("Prompt not found: {}", prompt))?;
+
+        prompt.execute(arguments).await
+    }
+}
+
 pub struct ContextServerRpc {
-    pub server_info: EntityInfo,
-    pub prompts: HashMap<String, Box<dyn PromptExecutor>>,
-    pub notification: Arc<dyn NotificationDelegate>,
+    server_info: EntityInfo,
+    prompts: PromptRegistry,
+    notification: Arc<dyn NotificationDelegate>,
 }
 
 impl ContextServerRpc {
-    pub fn new(
-        server_info: EntityInfo,
-        prompts: HashMap<String, Box<dyn PromptExecutor>>,
-        notification: Arc<dyn NotificationDelegate>,
-    ) -> Self {
-        Self {
-            server_info,
-            prompts,
-            notification,
+    pub fn builder() -> ContextServerRpcBuilder {
+        ContextServerRpcBuilder {
+            server_info: None,
+            prompts: PromptRegistry::new(),
+            notification: None,
         }
     }
 
@@ -253,19 +319,16 @@ impl ContextServerRpc {
                 },
             }),
             RequestKind::PromptsList => Ok(ContextServerResult::PromptsList {
-                prompts: self
-                    .prompts
-                    .iter()
-                    .map(|(_, prompt)| prompt.to_prompt())
-                    .collect(),
+                prompts: self.prompts.list(),
             }),
             RequestKind::PromptsGet { name, arguments } => Ok(ContextServerResult::PromptsGet {
-                prompt: self
-                    .prompts
-                    .get(&name)
-                    .ok_or_else(|| anyhow!(""))?
-                    .execute(arguments)
-                    .await?,
+                description: None,
+                messages: vec![SamplingMessage {
+                    role: SamplingRole::User,
+                    content: SamplingContent::Text {
+                        text: self.prompts.execute(&name, arguments).await?,
+                    },
+                }],
             }),
             RequestKind::ToolsList { .. }
             | RequestKind::ToolsCall { .. }
@@ -292,5 +355,49 @@ impl ContextServerRpc {
         };
 
         Ok(())
+    }
+}
+
+struct NotificationNoop;
+
+impl NotificationDelegate for NotificationNoop {}
+
+pub struct ContextServerRpcBuilder {
+    server_info: Option<EntityInfo>,
+    prompts: PromptRegistry,
+    notification: Option<Arc<dyn NotificationDelegate>>,
+}
+
+impl ContextServerRpcBuilder {
+    pub fn with_server_info<I>(mut self, server_info: I) -> Self
+    where
+        I: Into<EntityInfo>,
+    {
+        self.server_info = Some(server_info.into());
+        self
+    }
+
+    pub fn with_prompt(mut self, prompt: Arc<dyn PromptExecutor>) -> Self {
+        self.prompts.register(prompt);
+        self
+    }
+
+    pub fn with_notification(mut self, notification: Arc<dyn NotificationDelegate>) -> Self {
+        self.notification = Some(notification);
+        self
+    }
+
+    pub fn build(self) -> Result<ContextServerRpc> {
+        let server_info = self
+            .server_info
+            .ok_or_else(|| anyhow!("server_info is required"))?;
+
+        Ok(ContextServerRpc {
+            server_info,
+            prompts: self.prompts,
+            notification: self
+                .notification
+                .unwrap_or_else(|| Arc::new(NotificationNoop)),
+        })
     }
 }
