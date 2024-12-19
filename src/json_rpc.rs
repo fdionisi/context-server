@@ -25,6 +25,8 @@ pub struct JsonRpcResponse<R, E>(pub JsonRpcRequest<Response<R, E>>);
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Response<R, E> {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<R>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<E>,
 }

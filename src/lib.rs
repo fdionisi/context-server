@@ -64,14 +64,14 @@ pub enum RequestKind {
         client_info: EntityInfo,
     },
     #[serde(rename = "prompts/list", rename_all = "camelCase")]
-    PromptsList,
+    PromptsList {},
     #[serde(rename = "prompts/get", rename_all = "camelCase")]
     PromptsGet {
         name: String,
         arguments: Option<Value>,
     },
     #[serde(rename = "tools/list", rename_all = "camelCase")]
-    ToolsList,
+    ToolsList {},
     #[serde(rename = "tools/call", rename_all = "camelCase")]
     ToolsCall {
         name: String,
@@ -82,13 +82,19 @@ pub enum RequestKind {
     #[serde(rename = "resources/subscribe", rename_all = "camelCase")]
     ResourcesSubscribe { uri: String },
     #[serde(rename = "resources/read", rename_all = "camelCase")]
-    ResourcesRead,
+    ResourcesRead { uri: String },
     #[serde(rename = "resources/list", rename_all = "camelCase")]
-    ResourcesList,
+    ResourcesList {},
+    #[serde(rename = "sampling/createMessage", rename_all = "camelCase")]
+    SamplingCreateMessage(SamplingRequest),
     #[serde(rename = "logging/setLevel", rename_all = "camelCase")]
     LoggingSetLevel { level: LoggingLevel },
-    #[serde(rename = "completion/complete", rename_all = "camelCase")]
-    CompletionComplete,
+    #[serde(rename = "roots/list", rename_all = "camelCase")]
+    RootsList {},
+    #[serde(rename = "roots/get", rename_all = "camelCase")]
+    RootsGet { name: String },
+    #[serde(rename = "ping", rename_all = "camelCase")]
+    Ping,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -108,22 +114,33 @@ pub enum NotificationKind {
     ToolsListChanged,
     #[serde(rename = "notifications/prompts/list_changed")]
     PromptsListChanged,
+    #[serde(rename = "notifications/roots/list_changed")]
+    RootsListChanged,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerCapabilities {
-    pub experimental: Option<serde_json::Value>,
-    pub prompts: Option<HashMap<String, serde_json::Value>>,
-    // logging: Option<HashMap<String, serde_json::Value>>,
-    // resources: Option<ResourcesCapabilities>,
-    tools: Option<HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experimental: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging: Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roots: Option<HashMap<String, Value>>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct Prompt {
     pub name: String,
-    pub arguments: Option<Vec<PromptArgument>>,
+    pub arguments: Vec<PromptArgument>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -139,13 +156,25 @@ pub struct Tool {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub input_schema: serde_json::Value,
+    pub input_schema: Value,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ContextServerRpcError {
-    pub code: i32,
+    pub code: ErrorCode,
     pub message: String,
+    pub data: Option<Value>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[repr(i32)]
+pub enum ErrorCode {
+    ParseError = -32700,
+    InvalidRequest = -32600,
+    MethodNotFound = -32601,
+    InvalidParams = -32602,
+    InternalError = -32603,
+    ServerError = -32000,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -163,12 +192,58 @@ pub enum SamplingRole {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum SamplingContent {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image")]
     Image { data: String, mime_type: String },
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPreferences {
+    pub hints: Option<Vec<String>>,
+    pub cost_priority: Option<f32>,
+    pub speed_priority: Option<f32>,
+    pub intelligence_priority: Option<f32>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SamplingRequest {
+    pub messages: Vec<SamplingMessage>,
+    pub model_preferences: Option<ModelPreferences>,
+    pub system_prompt: Option<String>,
+    pub include_context: Option<String>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub stop_sequences: Option<Vec<String>>,
+    pub metadata: Option<Map<String, Value>>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct Resource {
+    pub uri: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub mime_type: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum ResourceContent {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "blob")]
+    Blob { data: String },
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct Root {
+    pub name: String,
+    pub description: Option<String>,
+    pub resources: Vec<Resource>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -184,30 +259,48 @@ pub enum ContextServerResult {
         prompts: Vec<Prompt>,
     },
     PromptsGet {
-        description: Option<String>,
+        description: String,
         messages: Vec<SamplingMessage>,
     },
     ToolsList {
         tools: Vec<Tool>,
     },
+    #[serde(rename_all = "camelCase")]
     ToolsCall {
         tool_result: String,
     },
+    ResourcesList {
+        resources: Vec<Resource>,
+    },
+    ResourcesRead {
+        contents: Vec<ResourceContent>,
+    },
+    SamplingCreateMessage {
+        messages: Vec<SamplingMessage>,
+    },
+    RootsList {
+        roots: Vec<Root>,
+    },
+    RootsGet {
+        root: Root,
+    },
+    Pong {},
 }
 
 pub type ContextServerRpcRequest = JsonRpcRequest<ContextServerMethod>;
 pub type ContextServerRpcResponse = JsonRpcResponse<ContextServerResult, ContextServerRpcError>;
 
 #[async_trait]
-pub trait ToolExecutor {
-    async fn execute(&self, arguments: Option<Map<String, Value>>) -> Result<String>;
+pub trait ToolExecutor: Send + Sync {
+    async fn execute(&self, arguments: Option<Value>) -> Result<String>;
     fn to_tool(&self) -> Tool;
 }
 
 #[async_trait]
-pub trait PromptExecutor {
+pub trait PromptExecutor: Send + Sync {
     fn name(&self) -> &str;
-    async fn execute(&self, arguments: Option<Value>) -> Result<String>;
+    fn description(&self, arguments: &Option<Value>) -> Result<String>;
+    async fn execute(&self, arguments: &Option<Value>) -> Result<String>;
     fn to_prompt(&self) -> Prompt;
 }
 
@@ -239,6 +332,10 @@ pub trait NotificationDelegate {
     fn on_prompts_list_changed(&self) -> Result<()> {
         Ok(())
     }
+
+    fn on_roots_list_changed(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -253,32 +350,126 @@ impl PromptRegistry {
         self.0.insert(prompt.name().to_string(), prompt);
     }
 
-    pub fn list(&self) -> Vec<Prompt> {
+    pub fn list_prompts(&self) -> Vec<Prompt> {
         self.0.values().map(|p| p.to_prompt()).collect()
     }
 
-    pub async fn execute(&self, prompt: &str, arguments: Option<Value>) -> Result<String> {
+    pub async fn execute_prompt(
+        &self,
+        prompt: &str,
+        arguments: Option<Value>,
+    ) -> Result<(String, String)> {
         let prompt = self
             .0
             .get(prompt)
             .ok_or_else(|| anyhow!("Prompt not found: {}", prompt))?;
 
-        prompt.execute(arguments).await
+        Ok((
+            prompt.description(&arguments)?,
+            prompt.execute(&arguments).await?,
+        ))
     }
+}
+
+#[async_trait]
+pub trait PromptDelegate: Send + Sync {
+    async fn list(&self) -> Result<Vec<Prompt>>;
+    async fn execute(&self, prompt: &str, arguments: Option<Value>) -> Result<(String, String)>;
+}
+
+#[async_trait]
+impl PromptDelegate for PromptRegistry {
+    async fn list(&self) -> Result<Vec<Prompt>> {
+        Ok(self.list_prompts())
+    }
+
+    async fn execute(&self, prompt: &str, arguments: Option<Value>) -> Result<(String, String)> {
+        self.execute_prompt(prompt, arguments).await
+    }
+}
+
+#[async_trait]
+pub trait ResourceDelegate {
+    async fn list(&self) -> Result<Vec<Resource>>;
+    async fn get(&self, uri: &str) -> Result<Option<Resource>>;
+    async fn read(&self, uri: &str) -> Result<ResourceContent>;
+    async fn subscribe(&self, uri: &str) -> Result<()>;
+    async fn unsubscribe(&self, uri: &str) -> Result<()>;
+}
+
+#[async_trait]
+pub trait ToolDelegate: Send + Sync {
+    async fn list(&self) -> Result<Vec<Tool>>;
+    async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String>;
+}
+
+pub struct ToolRegistry(HashMap<String, Arc<dyn ToolExecutor>>);
+
+impl ToolRegistry {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn register(&mut self, tool: Arc<dyn ToolExecutor>) {
+        self.0.insert(tool.to_tool().name.clone(), tool);
+    }
+
+    pub fn list(&self) -> Vec<Tool> {
+        self.0.values().map(|t| t.to_tool()).collect()
+    }
+
+    pub async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String> {
+        let tool = self
+            .0
+            .get(tool)
+            .ok_or_else(|| anyhow!("Tool not found: {}", tool))?;
+
+        tool.execute(arguments).await
+    }
+}
+
+#[async_trait]
+impl ToolDelegate for ToolRegistry {
+    async fn list(&self) -> Result<Vec<Tool>> {
+        Ok(self.list())
+    }
+
+    async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String> {
+        self.execute(tool, arguments).await
+    }
+}
+
+#[async_trait]
+pub trait SamplingDelegate: Send + Sync {
+    async fn create_message(&self, request: SamplingRequest) -> Result<Vec<SamplingMessage>>;
+}
+
+#[async_trait]
+pub trait RootDelegate: Send + Sync {
+    async fn list(&self) -> Result<Vec<Root>>;
+    async fn get(&self, name: &str) -> Result<Root>;
 }
 
 pub struct ContextServerRpc {
     server_info: EntityInfo,
-    prompts: PromptRegistry,
-    notification: Arc<dyn NotificationDelegate>,
+    prompts: Option<Arc<dyn PromptDelegate>>,
+    resources: Option<Arc<dyn ResourceDelegate>>,
+    tools: Option<Arc<dyn ToolDelegate>>,
+    notification: Option<Arc<dyn NotificationDelegate>>,
+    sampling: Option<Arc<dyn SamplingDelegate>>,
+    roots: Option<Arc<dyn RootDelegate>>,
 }
 
 impl ContextServerRpc {
     pub fn builder() -> ContextServerRpcBuilder {
         ContextServerRpcBuilder {
             server_info: None,
-            prompts: PromptRegistry::new(),
+            prompts: None,
+            tools: None,
             notification: None,
+            resources: None,
+            sampling: None,
+            roots: None,
         }
     }
 
@@ -314,58 +505,156 @@ impl ContextServerRpc {
                 server_info: self.server_info.clone(),
                 capabilities: ServerCapabilities {
                     experimental: None,
-                    prompts: Some(Default::default()),
-                    tools: Some(Default::default()),
+                    prompts: self.prompts.as_ref().map(|_| Default::default()),
+                    tools: self.tools.as_ref().map(|_| Default::default()),
+                    resources: self.resources.as_ref().map(|_| Default::default()),
+                    logging: self.notification.as_ref().map(|_| Default::default()),
+                    sampling: self.sampling.as_ref().map(|_| Default::default()),
+                    roots: self.roots.as_ref().map(|_| Default::default()),
                 },
             }),
-            RequestKind::PromptsList => Ok(ContextServerResult::PromptsList {
-                prompts: self.prompts.list(),
-            }),
-            RequestKind::PromptsGet { name, arguments } => Ok(ContextServerResult::PromptsGet {
-                description: None,
-                messages: vec![SamplingMessage {
-                    role: SamplingRole::User,
-                    content: SamplingContent::Text {
-                        text: self.prompts.execute(&name, arguments).await?,
-                    },
-                }],
-            }),
-            RequestKind::ToolsList { .. }
-            | RequestKind::ToolsCall { .. }
-            | RequestKind::ResourcesUnsubscribe { .. }
-            | RequestKind::ResourcesSubscribe { .. }
-            | RequestKind::ResourcesRead
-            | RequestKind::ResourcesList
-            | RequestKind::LoggingSetLevel { .. }
-            | RequestKind::CompletionComplete => unimplemented!(),
+            RequestKind::PromptsList {} => {
+                if let Some(prompts) = &self.prompts {
+                    Ok(ContextServerResult::PromptsList {
+                        prompts: prompts.list().await?,
+                    })
+                } else {
+                    Err(anyhow!("Prompts not available"))
+                }
+            }
+            RequestKind::PromptsGet { name, arguments } => {
+                if let Some(prompts) = &self.prompts {
+                    let (description, text) = prompts.execute(&name, arguments).await?;
+                    Ok(ContextServerResult::PromptsGet {
+                        description,
+                        messages: vec![SamplingMessage {
+                            role: SamplingRole::User,
+                            content: SamplingContent::Text { text },
+                        }],
+                    })
+                } else {
+                    Err(anyhow!("Prompts not available"))
+                }
+            }
+            RequestKind::ToolsList {} => {
+                if let Some(tools) = &self.tools {
+                    Ok(ContextServerResult::ToolsList {
+                        tools: tools.list().await?,
+                    })
+                } else {
+                    Err(anyhow!("Tools not available"))
+                }
+            }
+            RequestKind::ToolsCall { name, arguments } => {
+                if let Some(tools) = &self.tools {
+                    let result = tools.execute(&name, arguments).await?;
+                    Ok(ContextServerResult::ToolsCall {
+                        tool_result: result,
+                    })
+                } else {
+                    Err(anyhow!("Tools not available"))
+                }
+            }
+            RequestKind::SamplingCreateMessage(sampling_request) => {
+                if let Some(sampling) = &self.sampling {
+                    let messages = sampling.create_message(sampling_request).await?;
+                    Ok(ContextServerResult::SamplingCreateMessage { messages })
+                } else {
+                    Err(anyhow!("Sampling not available"))
+                }
+            }
+            RequestKind::ResourcesList {} => {
+                if let Some(resources) = &self.resources {
+                    Ok(ContextServerResult::ResourcesList {
+                        resources: resources.list().await?,
+                    })
+                } else {
+                    Err(anyhow!("Resources not available"))
+                }
+            }
+            RequestKind::ResourcesRead { uri } => {
+                if let Some(resources) = &self.resources {
+                    let content = resources.read(&uri).await?;
+                    Ok(ContextServerResult::ResourcesRead {
+                        contents: vec![content],
+                    })
+                } else {
+                    Err(anyhow!("Resources not available"))
+                }
+            }
+            RequestKind::ResourcesUnsubscribe { uri } => {
+                if let Some(resources) = &self.resources {
+                    resources.unsubscribe(&uri).await?;
+                    Ok(ContextServerResult::ResourcesList {
+                        resources: resources.list().await?,
+                    })
+                } else {
+                    Err(anyhow!("Resources not available"))
+                }
+            }
+            RequestKind::ResourcesSubscribe { uri } => {
+                if let Some(resources) = &self.resources {
+                    resources.subscribe(&uri).await?;
+                    Ok(ContextServerResult::ResourcesList {
+                        resources: resources.list().await?,
+                    })
+                } else {
+                    Err(anyhow!("Resources not available"))
+                }
+            }
+            RequestKind::RootsList {} => {
+                if let Some(roots) = &self.roots {
+                    Ok(ContextServerResult::RootsList {
+                        roots: roots.list().await?,
+                    })
+                } else {
+                    Err(anyhow!("Roots not available"))
+                }
+            }
+            RequestKind::RootsGet { name } => {
+                if let Some(roots) = &self.roots {
+                    Ok(ContextServerResult::RootsGet {
+                        root: roots.get(&name).await?,
+                    })
+                } else {
+                    Err(anyhow!("Roots not available"))
+                }
+            }
+            RequestKind::Ping => Ok(ContextServerResult::Pong {}),
+            RequestKind::LoggingSetLevel { .. } => {
+                unimplemented!()
+            }
         }
     }
 
     async fn process_notification(&self, request: NotificationKind) -> Result<()> {
-        match request {
-            NotificationKind::Initialized => self.notification.on_initialized()?,
-            NotificationKind::Progress => self.notification.on_progress()?,
-            NotificationKind::Message => self.notification.on_message()?,
-            NotificationKind::ResourcesUpdated => self.notification.on_resources_updated()?,
-            NotificationKind::ResourcesListChanged => {
-                self.notification.on_resources_list_changed()?
-            }
-            NotificationKind::ToolsListChanged => self.notification.on_tools_list_changed()?,
-            NotificationKind::PromptsListChanged => self.notification.on_prompts_list_changed()?,
-        };
+        if let Some(notification) = &self.notification {
+            match request {
+                NotificationKind::Initialized => notification.on_initialized()?,
+                NotificationKind::Progress => notification.on_progress()?,
+                NotificationKind::Message => notification.on_message()?,
+                NotificationKind::ResourcesUpdated => notification.on_resources_updated()?,
+                NotificationKind::ResourcesListChanged => {
+                    notification.on_resources_list_changed()?
+                }
+                NotificationKind::ToolsListChanged => notification.on_tools_list_changed()?,
+                NotificationKind::PromptsListChanged => notification.on_prompts_list_changed()?,
+                NotificationKind::RootsListChanged => notification.on_roots_list_changed()?,
+            };
+        }
 
         Ok(())
     }
 }
 
-struct NotificationNoop;
-
-impl NotificationDelegate for NotificationNoop {}
-
 pub struct ContextServerRpcBuilder {
     server_info: Option<EntityInfo>,
-    prompts: PromptRegistry,
+    prompts: Option<Arc<dyn PromptDelegate>>,
+    tools: Option<Arc<dyn ToolDelegate>>,
     notification: Option<Arc<dyn NotificationDelegate>>,
+    resources: Option<Arc<dyn ResourceDelegate>>,
+    sampling: Option<Arc<dyn SamplingDelegate>>,
+    roots: Option<Arc<dyn RootDelegate>>,
 }
 
 impl ContextServerRpcBuilder {
@@ -377,13 +666,33 @@ impl ContextServerRpcBuilder {
         self
     }
 
-    pub fn with_prompt(mut self, prompt: Arc<dyn PromptExecutor>) -> Self {
-        self.prompts.register(prompt);
+    pub fn with_prompts(mut self, prompts: Arc<dyn PromptDelegate>) -> Self {
+        self.prompts = Some(prompts);
+        self
+    }
+
+    pub fn with_tools(mut self, tools: Arc<dyn ToolDelegate>) -> Self {
+        self.tools = Some(tools);
         self
     }
 
     pub fn with_notification(mut self, notification: Arc<dyn NotificationDelegate>) -> Self {
         self.notification = Some(notification);
+        self
+    }
+
+    pub fn with_resources(mut self, resources: Arc<dyn ResourceDelegate>) -> Self {
+        self.resources = Some(resources);
+        self
+    }
+
+    pub fn with_sampling(mut self, sampling: Arc<dyn SamplingDelegate>) -> Self {
+        self.sampling = Some(sampling);
+        self
+    }
+
+    pub fn with_roots(mut self, roots: Arc<dyn RootDelegate>) -> Self {
+        self.roots = Some(roots);
         self
     }
 
@@ -395,9 +704,11 @@ impl ContextServerRpcBuilder {
         Ok(ContextServerRpc {
             server_info,
             prompts: self.prompts,
-            notification: self
-                .notification
-                .unwrap_or_else(|| Arc::new(NotificationNoop)),
+            resources: self.resources,
+            tools: self.tools,
+            notification: self.notification,
+            sampling: self.sampling,
+            roots: self.roots,
         })
     }
 }
