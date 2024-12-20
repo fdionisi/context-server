@@ -1,12 +1,10 @@
-mod json_rpc;
-
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
-use crate::json_rpc::{JsonRpcRequest, JsonRpcResponse, Response};
+use jsonrpc_types::{JsonRpcRequest, JsonRpcResponse, Response};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ClientCapabilities {
@@ -219,7 +217,7 @@ pub struct SamplingRequest {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub stop_sequences: Option<Vec<String>>,
-    pub metadata: Option<Map<String, Value>>,
+    pub metadata: Option<Value>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]

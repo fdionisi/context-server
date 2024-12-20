@@ -20,26 +20,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "context-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "jsonrpc-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
+name = "jsonrpc-types"
+version = "0.1.0"
+source = "git+https://github.com/fdionisi/jsonrpc-types#d05194317f12b4035c531cf4d2b512a93aebe879"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
-
-[[package]]
-name = "model-context-protocol"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "proc-macro2"
