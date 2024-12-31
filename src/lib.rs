@@ -13,6 +13,7 @@ pub struct ClientCapabilities {
     pub meta: Option<Value>,
     pub experimental: Option<Value>,
     pub sampling: Option<Value>,
+    pub roots: Option<HashMap<String, Value>>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -90,10 +91,6 @@ pub enum RequestKind {
     SamplingCreateMessage(SamplingRequest),
     #[serde(rename = "logging/setLevel", rename_all = "camelCase")]
     LoggingSetLevel { level: LoggingLevel },
-    #[serde(rename = "roots/list", rename_all = "camelCase")]
-    RootsList {},
-    #[serde(rename = "roots/get", rename_all = "camelCase")]
-    RootsGet { name: String },
     #[serde(rename = "ping", rename_all = "camelCase")]
     Ping,
 }
@@ -115,8 +112,6 @@ pub enum NotificationKind {
     ToolsListChanged,
     #[serde(rename = "notifications/prompts/list_changed")]
     PromptsListChanged,
-    #[serde(rename = "notifications/roots/list_changed")]
-    RootsListChanged,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -137,8 +132,6 @@ pub struct ServerCapabilities {
     pub tools: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sampling: Option<HashMap<String, Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub roots: Option<HashMap<String, Value>>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -304,14 +297,6 @@ pub enum ContextServerResult {
     SamplingCreateMessage {
         messages: Vec<SamplingMessage>,
     },
-    RootsList {
-        roots: Vec<Root>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        next_cursor: Option<Cursor>,
-    },
-    RootsGet {
-        root: Root,
-    },
     Pong {},
 }
 
@@ -359,10 +344,6 @@ pub trait NotificationDelegate {
     }
 
     fn on_prompts_list_changed(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn on_roots_list_changed(&self) -> Result<()> {
         Ok(())
     }
 }
@@ -473,12 +454,6 @@ pub trait SamplingDelegate: Send + Sync {
     async fn create_message(&self, request: SamplingRequest) -> Result<Vec<SamplingMessage>>;
 }
 
-#[async_trait]
-pub trait RootDelegate: Send + Sync {
-    async fn list(&self) -> Result<Vec<Root>>;
-    async fn get(&self, name: &str) -> Result<Root>;
-}
-
 pub struct ContextServerRpc {
     server_info: EntityInfo,
     prompts: Option<Arc<dyn PromptDelegate>>,
@@ -486,7 +461,6 @@ pub struct ContextServerRpc {
     tools: Option<Arc<dyn ToolDelegate>>,
     notification: Option<Arc<dyn NotificationDelegate>>,
     sampling: Option<Arc<dyn SamplingDelegate>>,
-    roots: Option<Arc<dyn RootDelegate>>,
 }
 
 impl ContextServerRpc {
@@ -498,7 +472,6 @@ impl ContextServerRpc {
             notification: None,
             resources: None,
             sampling: None,
-            roots: None,
         }
     }
 
@@ -543,7 +516,6 @@ impl ContextServerRpc {
                     resources: self.resources.as_ref().map(|_| Default::default()),
                     logging: self.notification.as_ref().map(|_| Default::default()),
                     sampling: self.sampling.as_ref().map(|_| Default::default()),
-                    roots: self.roots.as_ref().map(|_| Default::default()),
                 },
             }),
             RequestKind::PromptsList {} => {
@@ -640,25 +612,6 @@ impl ContextServerRpc {
                     Err(anyhow!("Resources not available"))
                 }
             }
-            RequestKind::RootsList {} => {
-                if let Some(roots) = &self.roots {
-                    Ok(ContextServerResult::RootsList {
-                        roots: roots.list().await?,
-                        next_cursor: None,
-                    })
-                } else {
-                    Err(anyhow!("Roots not available"))
-                }
-            }
-            RequestKind::RootsGet { name } => {
-                if let Some(roots) = &self.roots {
-                    Ok(ContextServerResult::RootsGet {
-                        root: roots.get(&name).await?,
-                    })
-                } else {
-                    Err(anyhow!("Roots not available"))
-                }
-            }
             RequestKind::Ping => Ok(ContextServerResult::Pong {}),
             RequestKind::LoggingSetLevel { .. } => {
                 unimplemented!()
@@ -678,7 +631,6 @@ impl ContextServerRpc {
                 }
                 NotificationKind::ToolsListChanged => notification.on_tools_list_changed()?,
                 NotificationKind::PromptsListChanged => notification.on_prompts_list_changed()?,
-                NotificationKind::RootsListChanged => notification.on_roots_list_changed()?,
             };
         }
 
@@ -693,7 +645,6 @@ pub struct ContextServerRpcBuilder {
     notification: Option<Arc<dyn NotificationDelegate>>,
     resources: Option<Arc<dyn ResourceDelegate>>,
     sampling: Option<Arc<dyn SamplingDelegate>>,
-    roots: Option<Arc<dyn RootDelegate>>,
 }
 
 impl ContextServerRpcBuilder {
@@ -730,11 +681,6 @@ impl ContextServerRpcBuilder {
         self
     }
 
-    pub fn with_roots(mut self, roots: Arc<dyn RootDelegate>) -> Self {
-        self.roots = Some(roots);
-        self
-    }
-
     pub fn build(self) -> Result<ContextServerRpc> {
         let server_info = self
             .server_info
@@ -747,7 +693,6 @@ impl ContextServerRpcBuilder {
             tools: self.tools,
             notification: self.notification,
             sampling: self.sampling,
-            roots: self.roots,
         })
     }
 }
