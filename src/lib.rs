@@ -13,6 +13,19 @@ pub struct ClientCapabilities {
     pub meta: Option<Value>,
     pub experimental: Option<Value>,
     pub sampling: Option<Value>,
+    pub auth: Option<AuthCapabilities>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct AuthCapabilities {
+    pub oauth2: Option<OAuth2Capabilities>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct OAuth2Capabilities {
+    pub authorize: HashMap<String, Value>,
+    pub token: HashMap<String, Value>,
+    pub revoke: HashMap<String, Value>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -96,6 +109,12 @@ pub enum RequestKind {
     RootsGet { name: String },
     #[serde(rename = "ping", rename_all = "camelCase")]
     Ping,
+    #[serde(rename = "auth/oauth2/authorize", rename_all = "camelCase")]
+    AuthOAuth2Authorize { provider: String, params: Value },
+    #[serde(rename = "auth/oauth2/token", rename_all = "camelCase")]
+    AuthOAuth2Token { provider: String, params: Value },
+    #[serde(rename = "auth/oauth2/revoke", rename_all = "camelCase")]
+    AuthOAuth2Revoke { provider: String, token: String },
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -139,6 +158,8 @@ pub struct ServerCapabilities {
     pub sampling: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roots: Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AuthCapabilities>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -313,6 +334,15 @@ pub enum ContextServerResult {
         root: Root,
     },
     Pong {},
+    AuthOAuth2Authorize {
+        authorization_url: String,
+    },
+    AuthOAuth2Token {
+        access_token: String,
+        refresh_token: Option<String>,
+        expires_in: Option<u64>,
+    },
+    AuthOAuth2Revoke {},
 }
 
 pub type ContextServerRpcRequest = JsonRpcRequest<ContextServerMethod>;
@@ -479,6 +509,17 @@ pub trait RootDelegate: Send + Sync {
     async fn get(&self, name: &str) -> Result<Root>;
 }
 
+#[async_trait]
+pub trait AuthDelegate: Send + Sync {
+    async fn oauth2_authorize(&self, provider: &str, params: Value) -> Result<String>;
+    async fn oauth2_token(
+        &self,
+        provider: &str,
+        params: Value,
+    ) -> Result<(String, Option<String>, Option<u64>)>;
+    async fn oauth2_revoke(&self, provider: &str, token: &str) -> Result<()>;
+}
+
 pub struct ContextServerRpc {
     server_info: EntityInfo,
     prompts: Option<Arc<dyn PromptDelegate>>,
@@ -487,6 +528,7 @@ pub struct ContextServerRpc {
     notification: Option<Arc<dyn NotificationDelegate>>,
     sampling: Option<Arc<dyn SamplingDelegate>>,
     roots: Option<Arc<dyn RootDelegate>>,
+    auth: Option<Arc<dyn AuthDelegate>>,
 }
 
 impl ContextServerRpc {
@@ -499,6 +541,7 @@ impl ContextServerRpc {
             resources: None,
             sampling: None,
             roots: None,
+            auth: None,
         }
     }
 
@@ -544,6 +587,13 @@ impl ContextServerRpc {
                     logging: self.notification.as_ref().map(|_| Default::default()),
                     sampling: self.sampling.as_ref().map(|_| Default::default()),
                     roots: self.roots.as_ref().map(|_| Default::default()),
+                    auth: self.auth.as_ref().map(|_| AuthCapabilities {
+                        oauth2: Some(OAuth2Capabilities {
+                            authorize: Default::default(),
+                            token: Default::default(),
+                            revoke: Default::default(),
+                        }),
+                    }),
                 },
             }),
             RequestKind::PromptsList {} => {
@@ -663,6 +713,35 @@ impl ContextServerRpc {
             RequestKind::LoggingSetLevel { .. } => {
                 unimplemented!()
             }
+            RequestKind::AuthOAuth2Authorize { provider, params } => {
+                if let Some(auth) = &self.auth {
+                    let authorization_url = auth.oauth2_authorize(&provider, params).await?;
+                    Ok(ContextServerResult::AuthOAuth2Authorize { authorization_url })
+                } else {
+                    Err(anyhow!("Auth not available"))
+                }
+            }
+            RequestKind::AuthOAuth2Token { provider, params } => {
+                if let Some(auth) = &self.auth {
+                    let (access_token, refresh_token, expires_in) =
+                        auth.oauth2_token(&provider, params).await?;
+                    Ok(ContextServerResult::AuthOAuth2Token {
+                        access_token,
+                        refresh_token,
+                        expires_in,
+                    })
+                } else {
+                    Err(anyhow!("Auth not available"))
+                }
+            }
+            RequestKind::AuthOAuth2Revoke { provider, token } => {
+                if let Some(auth) = &self.auth {
+                    auth.oauth2_revoke(&provider, &token).await?;
+                    Ok(ContextServerResult::AuthOAuth2Revoke {})
+                } else {
+                    Err(anyhow!("Auth not available"))
+                }
+            }
         }
     }
 
@@ -694,6 +773,7 @@ pub struct ContextServerRpcBuilder {
     resources: Option<Arc<dyn ResourceDelegate>>,
     sampling: Option<Arc<dyn SamplingDelegate>>,
     roots: Option<Arc<dyn RootDelegate>>,
+    auth: Option<Arc<dyn AuthDelegate>>,
 }
 
 impl ContextServerRpcBuilder {
@@ -735,6 +815,11 @@ impl ContextServerRpcBuilder {
         self
     }
 
+    pub fn with_auth(mut self, auth: Arc<dyn AuthDelegate>) -> Self {
+        self.auth = Some(auth);
+        self
+    }
+
     pub fn build(self) -> Result<ContextServerRpc> {
         let server_info = self
             .server_info
@@ -748,6 +833,7 @@ impl ContextServerRpcBuilder {
             notification: self.notification,
             sampling: self.sampling,
             roots: self.roots,
+            auth: self.auth,
         })
     }
 }
