@@ -8,8 +8,11 @@ use jsonrpc_types::{JsonRpcRequest, JsonRpcResponse, Response};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct ClientCapabilities {
-    experimental: Option<Value>,
-    sampling: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "_meta")]
+    pub meta: Option<Value>,
+    pub experimental: Option<Value>,
+    pub sampling: Option<Value>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -120,6 +123,9 @@ pub enum NotificationKind {
 #[serde(rename_all = "camelCase")]
 pub struct ServerCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "_meta")]
+    pub meta: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompts: Option<HashMap<String, Value>>,
@@ -210,6 +216,9 @@ pub struct ModelPreferences {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SamplingRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "_meta")]
+    pub meta: Option<Value>,
     pub messages: Vec<SamplingMessage>,
     pub model_preferences: Option<ModelPreferences>,
     pub system_prompt: Option<String>,
@@ -245,6 +254,19 @@ pub struct Root {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextServerResultEnvelope {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "_meta")]
+    pub meta: Option<Value>,
+    #[serde(flatten)]
+    pub result: ContextServerResult,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct Cursor(String);
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(untagged)]
 pub enum ContextServerResult {
     #[serde(rename_all = "camelCase")]
@@ -255,6 +277,8 @@ pub enum ContextServerResult {
     },
     PromptsList {
         prompts: Vec<Prompt>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        next_cursor: Option<Cursor>,
     },
     PromptsGet {
         description: String,
@@ -262,6 +286,8 @@ pub enum ContextServerResult {
     },
     ToolsList {
         tools: Vec<Tool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        next_cursor: Option<Cursor>,
     },
     #[serde(rename_all = "camelCase")]
     ToolsCall {
@@ -269,6 +295,8 @@ pub enum ContextServerResult {
     },
     ResourcesList {
         resources: Vec<Resource>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        next_cursor: Option<Cursor>,
     },
     ResourcesRead {
         contents: Vec<ResourceContent>,
@@ -278,6 +306,8 @@ pub enum ContextServerResult {
     },
     RootsList {
         roots: Vec<Root>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        next_cursor: Option<Cursor>,
     },
     RootsGet {
         root: Root,
@@ -286,7 +316,8 @@ pub enum ContextServerResult {
 }
 
 pub type ContextServerRpcRequest = JsonRpcRequest<ContextServerMethod>;
-pub type ContextServerRpcResponse = JsonRpcResponse<ContextServerResult, ContextServerRpcError>;
+pub type ContextServerRpcResponse =
+    JsonRpcResponse<ContextServerResultEnvelope, ContextServerRpcError>;
 
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
@@ -486,7 +517,10 @@ impl ContextServerRpc {
                 Ok(Some(JsonRpcResponse(JsonRpcRequest {
                     header: context_server_request.header.clone(),
                     payload: Response {
-                        result: Some(response),
+                        result: Some(ContextServerResultEnvelope {
+                            meta: None,
+                            result: response,
+                        }),
                         error: None,
                     },
                 })))
@@ -502,6 +536,7 @@ impl ContextServerRpc {
                 protocol_version,
                 server_info: self.server_info.clone(),
                 capabilities: ServerCapabilities {
+                    meta: None,
                     experimental: None,
                     prompts: self.prompts.as_ref().map(|_| Default::default()),
                     tools: self.tools.as_ref().map(|_| Default::default()),
@@ -515,6 +550,7 @@ impl ContextServerRpc {
                 if let Some(prompts) = &self.prompts {
                     Ok(ContextServerResult::PromptsList {
                         prompts: prompts.list().await?,
+                        next_cursor: None,
                     })
                 } else {
                     Err(anyhow!("Prompts not available"))
@@ -538,6 +574,7 @@ impl ContextServerRpc {
                 if let Some(tools) = &self.tools {
                     Ok(ContextServerResult::ToolsList {
                         tools: tools.list().await?,
+                        next_cursor: None,
                     })
                 } else {
                     Err(anyhow!("Tools not available"))
@@ -565,6 +602,7 @@ impl ContextServerRpc {
                 if let Some(resources) = &self.resources {
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
+                        next_cursor: None,
                     })
                 } else {
                     Err(anyhow!("Resources not available"))
@@ -585,6 +623,7 @@ impl ContextServerRpc {
                     resources.unsubscribe(&uri).await?;
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
+                        next_cursor: None,
                     })
                 } else {
                     Err(anyhow!("Resources not available"))
@@ -595,6 +634,7 @@ impl ContextServerRpc {
                     resources.subscribe(&uri).await?;
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
+                        next_cursor: None,
                     })
                 } else {
                     Err(anyhow!("Resources not available"))
@@ -604,6 +644,7 @@ impl ContextServerRpc {
                 if let Some(roots) = &self.roots {
                     Ok(ContextServerResult::RootsList {
                         roots: roots.list().await?,
+                        next_cursor: None,
                     })
                 } else {
                     Err(anyhow!("Roots not available"))
