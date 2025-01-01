@@ -318,7 +318,7 @@ pub trait PromptExecutor: Send + Sync {
     fn to_prompt(&self) -> Prompt;
 }
 
-pub trait NotificationDelegate {
+pub trait NotificationDelegate: Send + Sync {
     fn on_initialized(&self) -> Result<()> {
         Ok(())
     }
@@ -399,7 +399,7 @@ impl PromptDelegate for PromptRegistry {
 }
 
 #[async_trait]
-pub trait ResourceDelegate {
+pub trait ResourceDelegate: Send + Sync {
     async fn list(&self) -> Result<Vec<Resource>>;
     async fn get(&self, uri: &str) -> Result<Option<Resource>>;
     async fn read(&self, uri: &str) -> Result<ResourceContent>;
