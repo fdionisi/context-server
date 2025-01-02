@@ -341,11 +341,15 @@ pub trait ToolExecutor: Send + Sync {
     fn to_tool(&self) -> Tool;
 }
 
+pub struct ComputedPrompt {
+    pub description: String,
+    pub messages: Vec<PromptMessage>,
+}
+
 #[async_trait]
 pub trait PromptExecutor: Send + Sync {
     fn name(&self) -> &str;
-    fn description(&self, arguments: &Option<Value>) -> Result<String>;
-    async fn execute(&self, arguments: &Option<Value>) -> Result<Vec<PromptMessage>>;
+    async fn compute(&self, arguments: &Option<Value>) -> Result<ComputedPrompt>;
     fn to_prompt(&self) -> Prompt;
 }
 
@@ -395,31 +399,24 @@ impl PromptRegistry {
         self.0.values().map(|p| p.to_prompt()).collect()
     }
 
-    pub async fn execute_prompt(
+    pub async fn compute_prompt(
         &self,
         prompt: &str,
         arguments: Option<Value>,
-    ) -> Result<(String, Vec<PromptMessage>)> {
+    ) -> Result<ComputedPrompt> {
         let prompt = self
             .0
             .get(prompt)
             .ok_or_else(|| anyhow!("Prompt not found: {}", prompt))?;
 
-        Ok((
-            prompt.description(&arguments)?,
-            prompt.execute(&arguments).await?,
-        ))
+        prompt.compute(&arguments).await
     }
 }
 
 #[async_trait]
 pub trait PromptDelegate: Send + Sync {
     async fn list(&self) -> Result<Vec<Prompt>>;
-    async fn execute(
-        &self,
-        prompt: &str,
-        arguments: Option<Value>,
-    ) -> Result<(String, Vec<PromptMessage>)>;
+    async fn compute(&self, prompt: &str, arguments: Option<Value>) -> Result<ComputedPrompt>;
 }
 
 #[async_trait]
@@ -428,12 +425,8 @@ impl PromptDelegate for PromptRegistry {
         Ok(self.list_prompts())
     }
 
-    async fn execute(
-        &self,
-        prompt: &str,
-        arguments: Option<Value>,
-    ) -> Result<(String, Vec<PromptMessage>)> {
-        self.execute_prompt(prompt, arguments).await
+    async fn compute(&self, prompt: &str, arguments: Option<Value>) -> Result<ComputedPrompt> {
+        self.compute_prompt(prompt, arguments).await
     }
 }
 
@@ -570,7 +563,10 @@ impl ContextServer {
             }
             RequestKind::PromptsGet { name, arguments } => {
                 if let Some(prompts) = &self.prompts {
-                    let (description, messages) = prompts.execute(&name, arguments).await?;
+                    let ComputedPrompt {
+                        description,
+                        messages,
+                    } = prompts.compute(&name, arguments).await?;
                     Ok(ContextServerResult::PromptsGet {
                         description,
                         messages,
