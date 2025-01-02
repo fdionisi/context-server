@@ -455,7 +455,7 @@ pub trait SamplingDelegate: Send + Sync {
 }
 
 #[derive(Clone)]
-pub struct ContextServerRpc {
+pub struct ContextServer {
     server_info: EntityInfo,
     prompts: Option<Arc<dyn PromptDelegate>>,
     resources: Option<Arc<dyn ResourceDelegate>>,
@@ -464,9 +464,9 @@ pub struct ContextServerRpc {
     sampling: Option<Arc<dyn SamplingDelegate>>,
 }
 
-impl ContextServerRpc {
-    pub fn builder() -> ContextServerRpcBuilder {
-        ContextServerRpcBuilder {
+impl ContextServer {
+    pub fn builder() -> ContextServerBuilder {
+        ContextServerBuilder {
             server_info: None,
             prompts: None,
             tools: None,
@@ -639,7 +639,7 @@ impl ContextServerRpc {
     }
 }
 
-pub struct ContextServerRpcBuilder {
+pub struct ContextServerBuilder {
     server_info: Option<EntityInfo>,
     prompts: Option<Arc<dyn PromptDelegate>>,
     tools: Option<Arc<dyn ToolDelegate>>,
@@ -648,7 +648,7 @@ pub struct ContextServerRpcBuilder {
     sampling: Option<Arc<dyn SamplingDelegate>>,
 }
 
-impl ContextServerRpcBuilder {
+impl ContextServerBuilder {
     pub fn with_server_info<I>(mut self, server_info: I) -> Self
     where
         I: Into<EntityInfo>,
@@ -682,12 +682,12 @@ impl ContextServerRpcBuilder {
         self
     }
 
-    pub fn build(self) -> Result<ContextServerRpc> {
+    pub fn build(self) -> Result<ContextServer> {
         let server_info = self
             .server_info
             .ok_or_else(|| anyhow!("server_info is required"))?;
 
-        Ok(ContextServerRpc {
+        Ok(ContextServer {
             server_info,
             prompts: self.prompts,
             resources: self.resources,
