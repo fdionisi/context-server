@@ -306,7 +306,7 @@ pub enum ContextServerResult {
     },
     PromptsGet {
         description: String,
-        messages: Vec<SamplingMessage>,
+        messages: Vec<PromptMessage>,
     },
     ToolsList {
         tools: Vec<Tool>,
@@ -345,7 +345,7 @@ pub trait ToolExecutor: Send + Sync {
 pub trait PromptExecutor: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self, arguments: &Option<Value>) -> Result<String>;
-    async fn execute(&self, arguments: &Option<Value>) -> Result<String>;
+    async fn execute(&self, arguments: &Option<Value>) -> Result<Vec<PromptMessage>>;
     fn to_prompt(&self) -> Prompt;
 }
 
@@ -399,7 +399,7 @@ impl PromptRegistry {
         &self,
         prompt: &str,
         arguments: Option<Value>,
-    ) -> Result<(String, String)> {
+    ) -> Result<(String, Vec<PromptMessage>)> {
         let prompt = self
             .0
             .get(prompt)
@@ -415,7 +415,11 @@ impl PromptRegistry {
 #[async_trait]
 pub trait PromptDelegate: Send + Sync {
     async fn list(&self) -> Result<Vec<Prompt>>;
-    async fn execute(&self, prompt: &str, arguments: Option<Value>) -> Result<(String, String)>;
+    async fn execute(
+        &self,
+        prompt: &str,
+        arguments: Option<Value>,
+    ) -> Result<(String, Vec<PromptMessage>)>;
 }
 
 #[async_trait]
@@ -424,7 +428,11 @@ impl PromptDelegate for PromptRegistry {
         Ok(self.list_prompts())
     }
 
-    async fn execute(&self, prompt: &str, arguments: Option<Value>) -> Result<(String, String)> {
+    async fn execute(
+        &self,
+        prompt: &str,
+        arguments: Option<Value>,
+    ) -> Result<(String, Vec<PromptMessage>)> {
         self.execute_prompt(prompt, arguments).await
     }
 }
@@ -562,13 +570,10 @@ impl ContextServer {
             }
             RequestKind::PromptsGet { name, arguments } => {
                 if let Some(prompts) = &self.prompts {
-                    let (description, text) = prompts.execute(&name, arguments).await?;
+                    let (description, messages) = prompts.execute(&name, arguments).await?;
                     Ok(ContextServerResult::PromptsGet {
                         description,
-                        messages: vec![SamplingMessage {
-                            role: SamplingRole::User,
-                            content: SamplingContent::Text { text },
-                        }],
+                        messages,
                     })
                 } else {
                     Err(anyhow!("Prompts not available"))
