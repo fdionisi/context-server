@@ -454,6 +454,7 @@ pub trait SamplingDelegate: Send + Sync {
     async fn create_message(&self, request: SamplingRequest) -> Result<Vec<SamplingMessage>>;
 }
 
+#[derive(Clone)]
 pub struct ContextServerRpc {
     server_info: EntityInfo,
     prompts: Option<Arc<dyn PromptDelegate>>,
