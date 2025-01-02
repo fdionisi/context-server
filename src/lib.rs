@@ -55,7 +55,6 @@ pub enum Version {
     Number(u32),
     String(String),
 }
-
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(tag = "method", content = "params")]
 pub enum RequestKind {
@@ -65,15 +64,17 @@ pub enum RequestKind {
         capabilities: ClientCapabilities,
         client_info: EntityInfo,
     },
-    #[serde(rename = "prompts/list", rename_all = "camelCase")]
-    PromptsList {},
+    #[serde(rename = "prompts/list")]
+    #[serde(deserialize_with = "deserialize_empty_or_unit")]
+    PromptsList,
     #[serde(rename = "prompts/get", rename_all = "camelCase")]
     PromptsGet {
         name: String,
         arguments: Option<Value>,
     },
-    #[serde(rename = "tools/list", rename_all = "camelCase")]
-    ToolsList {},
+    #[serde(rename = "tools/list")]
+    #[serde(deserialize_with = "deserialize_empty_or_unit")]
+    ToolsList,
     #[serde(rename = "tools/call", rename_all = "camelCase")]
     ToolsCall {
         name: String,
@@ -85,14 +86,47 @@ pub enum RequestKind {
     ResourcesSubscribe { uri: String },
     #[serde(rename = "resources/read", rename_all = "camelCase")]
     ResourcesRead { uri: String },
-    #[serde(rename = "resources/list", rename_all = "camelCase")]
-    ResourcesList {},
+    #[serde(rename = "resources/list")]
+    #[serde(deserialize_with = "deserialize_empty_or_unit")]
+    ResourcesList,
     #[serde(rename = "sampling/createMessage", rename_all = "camelCase")]
     SamplingCreateMessage(SamplingRequest),
     #[serde(rename = "logging/setLevel", rename_all = "camelCase")]
     LoggingSetLevel { level: LoggingLevel },
-    #[serde(rename = "ping", rename_all = "camelCase")]
+    #[serde(rename = "ping")]
+    #[serde(deserialize_with = "deserialize_empty_or_unit")]
     Ping,
+}
+
+fn deserialize_empty_or_unit<'de, D>(deserializer: D) -> Result<(), D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct EmptyOrUnit;
+
+    impl<'de> serde::de::Visitor<'de> for EmptyOrUnit {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("empty object or unit")
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(())
+        }
+
+        fn visit_map<M>(self, _: M) -> Result<Self::Value, M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            Ok(())
+        }
+    }
+
+    deserializer.deserialize_any(EmptyOrUnit)
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -551,7 +585,7 @@ impl ContextServer {
                     sampling: self.sampling.as_ref().map(|_| Default::default()),
                 },
             }),
-            RequestKind::PromptsList {} => {
+            RequestKind::PromptsList => {
                 if let Some(prompts) = &self.prompts {
                     Ok(ContextServerResult::PromptsList {
                         prompts: prompts.list().await?,
@@ -575,7 +609,7 @@ impl ContextServer {
                     Err(anyhow!("Prompts not available"))
                 }
             }
-            RequestKind::ToolsList {} => {
+            RequestKind::ToolsList => {
                 if let Some(tools) = &self.tools {
                     Ok(ContextServerResult::ToolsList {
                         tools: tools.list().await?,
@@ -603,7 +637,7 @@ impl ContextServer {
                     Err(anyhow!("Sampling not available"))
                 }
             }
-            RequestKind::ResourcesList {} => {
+            RequestKind::ResourcesList => {
                 if let Some(resources) = &self.resources {
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
@@ -727,5 +761,83 @@ impl ContextServerBuilder {
             notification: self.notification,
             sampling: self.sampling,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_serialize_request_kind() {
+        let cases = vec![
+            (RequestKind::PromptsList, json!({"method": "prompts/list"})),
+            (RequestKind::ToolsList, json!({"method": "tools/list"})),
+            (
+                RequestKind::ResourcesList,
+                json!({"method": "resources/list"}),
+            ),
+            (RequestKind::Ping, json!({"method": "ping"})),
+        ];
+
+        for (kind, expected_json) in cases {
+            let serialized = serde_json::to_value(&kind).unwrap();
+            assert_eq!(serialized, expected_json);
+        }
+    }
+
+    #[test]
+    fn test_deserialize_request_kind() {
+        let cases = vec![
+            (json!({"method": "prompts/list"}), RequestKind::PromptsList),
+            (json!({"method": "tools/list"}), RequestKind::ToolsList),
+            (
+                json!({"method": "resources/list"}),
+                RequestKind::ResourcesList,
+            ),
+            (json!({"method": "ping"}), RequestKind::Ping),
+        ];
+
+        for (json, expected_kind) in cases {
+            let deserialized: RequestKind = serde_json::from_value(json).unwrap();
+            match (expected_kind, deserialized) {
+                (RequestKind::PromptsList, RequestKind::PromptsList) => {}
+                (RequestKind::ToolsList, RequestKind::ToolsList) => {}
+                (RequestKind::ResourcesList, RequestKind::ResourcesList) => {}
+                (RequestKind::Ping, RequestKind::Ping) => {}
+                _ => panic!("Deserialization mismatch"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_request_kind_with_empty_params() {
+        let cases = vec![
+            (
+                json!({"method": "prompts/list", "params": {}}),
+                RequestKind::PromptsList,
+            ),
+            (
+                json!({"method": "tools/list", "params": {}}),
+                RequestKind::ToolsList,
+            ),
+            (
+                json!({"method": "resources/list", "params": {}}),
+                RequestKind::ResourcesList,
+            ),
+            (json!({"method": "ping", "params": {}}), RequestKind::Ping),
+        ];
+
+        for (json, expected_kind) in cases {
+            let deserialized: RequestKind = serde_json::from_value(json).unwrap();
+            match (expected_kind, deserialized) {
+                (RequestKind::PromptsList, RequestKind::PromptsList) => {}
+                (RequestKind::ToolsList, RequestKind::ToolsList) => {}
+                (RequestKind::ResourcesList, RequestKind::ResourcesList) => {}
+                (RequestKind::Ping, RequestKind::Ping) => {}
+                _ => panic!("Deserialization mismatch"),
+            }
+        }
     }
 }
