@@ -383,7 +383,7 @@ pub struct ComputedPrompt {
 #[async_trait]
 pub trait PromptExecutor: Send + Sync {
     fn name(&self) -> &str;
-    async fn compute(&self, arguments: &Option<Value>) -> Result<ComputedPrompt>;
+    async fn compute(&self, arguments: Option<Value>) -> Result<ComputedPrompt>;
     fn to_prompt(&self) -> Prompt;
 }
 
@@ -443,7 +443,7 @@ impl PromptRegistry {
             .get(prompt)
             .ok_or_else(|| anyhow!("Prompt not found: {}", prompt))?;
 
-        prompt.compute(&arguments).await
+        prompt.compute(arguments).await
     }
 }
 
@@ -542,7 +542,7 @@ impl ContextServer {
         }
     }
 
-    pub async fn process_rpc_request(
+    pub async fn handle_incoming_message(
         &self,
         context_server_request: ContextServerRpcRequest,
     ) -> Result<Option<ContextServerRpcResponse>> {
