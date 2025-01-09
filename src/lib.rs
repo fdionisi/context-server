@@ -296,11 +296,18 @@ pub struct Resource {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(tag = "type")]
-pub enum ResourceContent {
-    #[serde(rename = "text")]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceContent {
+    pub uri: String,
+    pub mime_type: String,
+    #[serde(flatten)]
+    pub content: ResourceContentType,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ResourceContentType {
     Text { text: String },
-    #[serde(rename = "blob")]
     Blob { data: String },
 }
 
