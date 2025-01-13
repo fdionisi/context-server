@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use jsonrpc_types::{JsonRpcRequest, JsonRpcResponse, Response};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ClientCapabilities {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "_meta")]
@@ -34,7 +34,7 @@ where
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum LoggingLevel {
     Debug,
     Info,
@@ -42,7 +42,7 @@ pub enum LoggingLevel {
     Error,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(untagged)]
 pub enum ContextServerMethod {
     Notification(NotificationKind),
@@ -55,7 +55,7 @@ pub enum Version {
     Number(u32),
     String(String),
 }
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "method", content = "params")]
 pub enum RequestKind {
     #[serde(rename = "initialize", rename_all = "camelCase")]
@@ -129,7 +129,7 @@ where
     deserializer.deserialize_any(EmptyOrUnit)
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "method", content = "params")]
 pub enum NotificationKind {
     #[serde(rename = "notifications/initialized")]
@@ -382,6 +382,7 @@ pub trait ToolExecutor: Send + Sync {
     fn to_tool(&self) -> Tool;
 }
 
+#[derive(Debug)]
 pub struct ComputedPrompt {
     pub description: String,
     pub messages: Vec<PromptMessage>,
@@ -396,30 +397,37 @@ pub trait PromptExecutor: Send + Sync {
 
 pub trait NotificationDelegate: Send + Sync {
     fn on_initialized(&self) -> Result<()> {
+        tracing::info!("Initialized notification received");
         Ok(())
     }
 
     fn on_progress(&self) -> Result<()> {
+        tracing::debug!("Progress notification received");
         Ok(())
     }
 
     fn on_message(&self) -> Result<()> {
+        tracing::debug!("Message notification received");
         Ok(())
     }
 
     fn on_resources_updated(&self) -> Result<()> {
+        tracing::debug!("Resources updated notification received");
         Ok(())
     }
 
     fn on_resources_list_changed(&self) -> Result<()> {
+        tracing::debug!("Resources list changed notification received");
         Ok(())
     }
 
     fn on_tools_list_changed(&self) -> Result<()> {
+        tracing::debug!("Tools list changed notification received");
         Ok(())
     }
 
     fn on_prompts_list_changed(&self) -> Result<()> {
+        tracing::debug!("Prompts list changed notification received");
         Ok(())
     }
 }
@@ -429,14 +437,17 @@ pub struct PromptRegistry(HashMap<String, Arc<dyn PromptExecutor>>);
 
 impl PromptRegistry {
     pub fn new() -> Self {
+        tracing::debug!("Creating new PromptRegistry");
         Self::default()
     }
 
     pub fn register(&mut self, prompt: Arc<dyn PromptExecutor>) {
+        tracing::debug!("Registering prompt: {}", prompt.name());
         self.0.insert(prompt.name().to_string(), prompt);
     }
 
     pub fn list_prompts(&self) -> Vec<Prompt> {
+        tracing::debug!("Listing prompts");
         self.0.values().map(|p| p.to_prompt()).collect()
     }
 
@@ -445,6 +456,7 @@ impl PromptRegistry {
         prompt: &str,
         arguments: Option<Value>,
     ) -> Result<ComputedPrompt> {
+        tracing::debug!("Computing prompt: {}", prompt);
         let prompt = self
             .0
             .get(prompt)
@@ -463,10 +475,12 @@ pub trait PromptDelegate: Send + Sync {
 #[async_trait]
 impl PromptDelegate for PromptRegistry {
     async fn list(&self) -> Result<Vec<Prompt>> {
+        tracing::debug!("Listing prompts via PromptDelegate");
         Ok(self.list_prompts())
     }
 
     async fn compute(&self, prompt: &str, arguments: Option<Value>) -> Result<ComputedPrompt> {
+        tracing::debug!("Computing prompt via PromptDelegate: {}", prompt);
         self.compute_prompt(prompt, arguments).await
     }
 }
@@ -490,18 +504,22 @@ pub struct ToolRegistry(HashMap<String, Arc<dyn ToolExecutor>>);
 
 impl ToolRegistry {
     pub fn new() -> Self {
+        tracing::debug!("Creating new ToolRegistry");
         Self(HashMap::new())
     }
 
     pub fn register(&mut self, tool: Arc<dyn ToolExecutor>) {
+        tracing::debug!("Registering tool: {}", tool.to_tool().name);
         self.0.insert(tool.to_tool().name.clone(), tool);
     }
 
     pub fn list(&self) -> Vec<Tool> {
+        tracing::debug!("Listing tools");
         self.0.values().map(|t| t.to_tool()).collect()
     }
 
     pub async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String> {
+        tracing::debug!("Executing tool: {}", tool);
         let tool = self
             .0
             .get(tool)
@@ -514,10 +532,12 @@ impl ToolRegistry {
 #[async_trait]
 impl ToolDelegate for ToolRegistry {
     async fn list(&self) -> Result<Vec<Tool>> {
+        tracing::debug!("Listing tools via ToolDelegate");
         Ok(self.list())
     }
 
     async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String> {
+        tracing::debug!("Executing tool via ToolDelegate: {}", tool);
         self.execute(tool, arguments).await
     }
 }
@@ -539,6 +559,7 @@ pub struct ContextServer {
 
 impl ContextServer {
     pub fn builder() -> ContextServerBuilder {
+        tracing::debug!("Creating ContextServerBuilder");
         ContextServerBuilder {
             server_info: None,
             prompts: None,
@@ -553,13 +574,16 @@ impl ContextServer {
         &self,
         context_server_request: ContextServerRpcRequest,
     ) -> Result<Option<ContextServerRpcResponse>> {
+        tracing::debug!("Handling incoming message");
         match context_server_request.payload {
             ContextServerMethod::Notification(notification) => {
+                tracing::debug!("Processing notification");
                 self.process_notification(notification).await?;
 
                 Ok(None)
             }
             ContextServerMethod::Reqest(request) => {
+                tracing::debug!("Processing request");
                 let response = self.process_request(request).await?;
                 Ok(Some(JsonRpcResponse(JsonRpcRequest {
                     header: context_server_request.header.clone(),
@@ -576,6 +600,7 @@ impl ContextServer {
     }
 
     async fn process_request(&self, request: RequestKind) -> Result<ContextServerResult> {
+        tracing::debug!("Processing request: {:?}", request);
         match request {
             RequestKind::Initialize {
                 protocol_version, ..
@@ -594,16 +619,19 @@ impl ContextServer {
             }),
             RequestKind::PromptsList => {
                 if let Some(prompts) = &self.prompts {
+                    tracing::debug!("Listing prompts");
                     Ok(ContextServerResult::PromptsList {
                         prompts: prompts.list().await?,
                         next_cursor: None,
                     })
                 } else {
+                    tracing::error!("Prompts not available");
                     Err(anyhow!("Prompts not available"))
                 }
             }
             RequestKind::PromptsGet { name, arguments } => {
                 if let Some(prompts) = &self.prompts {
+                    tracing::debug!("Getting prompt: {}", name);
                     let ComputedPrompt {
                         description,
                         messages,
@@ -613,87 +641,107 @@ impl ContextServer {
                         messages,
                     })
                 } else {
+                    tracing::error!("Prompts not available");
                     Err(anyhow!("Prompts not available"))
                 }
             }
             RequestKind::ToolsList => {
                 if let Some(tools) = &self.tools {
+                    tracing::debug!("Listing tools");
                     Ok(ContextServerResult::ToolsList {
                         tools: tools.list().await?,
                         next_cursor: None,
                     })
                 } else {
+                    tracing::error!("Tools not available");
                     Err(anyhow!("Tools not available"))
                 }
             }
             RequestKind::ToolsCall { name, arguments } => {
                 if let Some(tools) = &self.tools {
+                    tracing::debug!("Calling tool: {}", name);
                     let result = tools.execute(&name, arguments).await?;
                     Ok(ContextServerResult::ToolsCall {
                         tool_result: result,
                     })
                 } else {
+                    tracing::error!("Tools not available");
                     Err(anyhow!("Tools not available"))
                 }
             }
             RequestKind::SamplingCreateMessage(sampling_request) => {
                 if let Some(sampling) = &self.sampling {
+                    tracing::debug!("Creating sampling message");
                     let messages = sampling.create_message(sampling_request).await?;
                     Ok(ContextServerResult::SamplingCreateMessage { messages })
                 } else {
+                    tracing::error!("Sampling not available");
                     Err(anyhow!("Sampling not available"))
                 }
             }
             RequestKind::ResourcesList => {
                 if let Some(resources) = &self.resources {
+                    tracing::debug!("Listing resources");
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
                         next_cursor: None,
                     })
                 } else {
+                    tracing::error!("Resources not available");
                     Err(anyhow!("Resources not available"))
                 }
             }
             RequestKind::ResourcesRead { uri } => {
                 if let Some(resources) = &self.resources {
+                    tracing::debug!("Reading resource: {}", uri);
                     let content = resources.read(&uri).await?;
                     Ok(ContextServerResult::ResourcesRead {
                         contents: vec![content],
                     })
                 } else {
+                    tracing::error!("Resources not available");
                     Err(anyhow!("Resources not available"))
                 }
             }
             RequestKind::ResourcesUnsubscribe { uri } => {
                 if let Some(resources) = &self.resources {
+                    tracing::debug!("Unsubscribing from resource: {}", uri);
                     resources.unsubscribe(&uri).await?;
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
                         next_cursor: None,
                     })
                 } else {
+                    tracing::error!("Resources not available");
                     Err(anyhow!("Resources not available"))
                 }
             }
             RequestKind::ResourcesSubscribe { uri } => {
                 if let Some(resources) = &self.resources {
+                    tracing::debug!("Subscribing to resource: {}", uri);
                     resources.subscribe(&uri).await?;
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
                         next_cursor: None,
                     })
                 } else {
+                    tracing::error!("Resources not available");
                     Err(anyhow!("Resources not available"))
                 }
             }
-            RequestKind::Ping => Ok(ContextServerResult::Pong {}),
+            RequestKind::Ping => {
+                tracing::debug!("Received ping request");
+                Ok(ContextServerResult::Pong {})
+            }
             RequestKind::LoggingSetLevel { .. } => {
+                tracing::warn!("LoggingSetLevel not implemented");
                 unimplemented!()
             }
         }
     }
 
     async fn process_notification(&self, request: NotificationKind) -> Result<()> {
+        tracing::debug!("Processing notification: {:?}", request);
         if let Some(notification) = &self.notification {
             match request {
                 NotificationKind::Initialized => notification.on_initialized()?,
@@ -726,36 +774,43 @@ impl ContextServerBuilder {
     where
         I: Into<EntityInfo>,
     {
+        tracing::debug!("Setting server info");
         self.server_info = Some(server_info.into());
         self
     }
 
     pub fn with_prompts(mut self, prompts: Arc<dyn PromptDelegate>) -> Self {
+        tracing::debug!("Setting prompts delegate");
         self.prompts = Some(prompts);
         self
     }
 
     pub fn with_tools(mut self, tools: Arc<dyn ToolDelegate>) -> Self {
+        tracing::debug!("Setting tools delegate");
         self.tools = Some(tools);
         self
     }
 
     pub fn with_notification(mut self, notification: Arc<dyn NotificationDelegate>) -> Self {
+        tracing::debug!("Setting notification delegate");
         self.notification = Some(notification);
         self
     }
 
     pub fn with_resources(mut self, resources: Arc<dyn ResourceDelegate>) -> Self {
+        tracing::debug!("Setting resources delegate");
         self.resources = Some(resources);
         self
     }
 
     pub fn with_sampling(mut self, sampling: Arc<dyn SamplingDelegate>) -> Self {
+        tracing::debug!("Setting sampling delegate");
         self.sampling = Some(sampling);
         self
     }
 
     pub fn build(self) -> Result<ContextServer> {
+        tracing::debug!("Building ContextServer");
         let server_info = self
             .server_info
             .ok_or_else(|| anyhow!("server_info is required"))?;
