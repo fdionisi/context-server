@@ -432,57 +432,10 @@ pub trait NotificationDelegate: Send + Sync {
     }
 }
 
-#[derive(Default)]
-pub struct PromptRegistry(HashMap<String, Arc<dyn PromptExecutor>>);
-
-impl PromptRegistry {
-    pub fn new() -> Self {
-        tracing::debug!("Creating new PromptRegistry");
-        Self::default()
-    }
-
-    pub fn register(&mut self, prompt: Arc<dyn PromptExecutor>) {
-        tracing::debug!("Registering prompt: {}", prompt.name());
-        self.0.insert(prompt.name().to_string(), prompt);
-    }
-
-    pub fn list_prompts(&self) -> Vec<Prompt> {
-        tracing::debug!("Listing prompts");
-        self.0.values().map(|p| p.to_prompt()).collect()
-    }
-
-    pub async fn compute_prompt(
-        &self,
-        prompt: &str,
-        arguments: Option<Value>,
-    ) -> Result<ComputedPrompt> {
-        tracing::debug!("Computing prompt: {}", prompt);
-        let prompt = self
-            .0
-            .get(prompt)
-            .ok_or_else(|| anyhow!("Prompt not found: {}", prompt))?;
-
-        prompt.compute(arguments).await
-    }
-}
-
 #[async_trait]
 pub trait PromptDelegate: Send + Sync {
     async fn list(&self) -> Result<Vec<Prompt>>;
     async fn compute(&self, prompt: &str, arguments: Option<Value>) -> Result<ComputedPrompt>;
-}
-
-#[async_trait]
-impl PromptDelegate for PromptRegistry {
-    async fn list(&self) -> Result<Vec<Prompt>> {
-        tracing::debug!("Listing prompts via PromptDelegate");
-        Ok(self.list_prompts())
-    }
-
-    async fn compute(&self, prompt: &str, arguments: Option<Value>) -> Result<ComputedPrompt> {
-        tracing::debug!("Computing prompt via PromptDelegate: {}", prompt);
-        self.compute_prompt(prompt, arguments).await
-    }
 }
 
 #[async_trait]
@@ -498,48 +451,6 @@ pub trait ResourceDelegate: Send + Sync {
 pub trait ToolDelegate: Send + Sync {
     async fn list(&self) -> Result<Vec<Tool>>;
     async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String>;
-}
-
-pub struct ToolRegistry(HashMap<String, Arc<dyn ToolExecutor>>);
-
-impl ToolRegistry {
-    pub fn new() -> Self {
-        tracing::debug!("Creating new ToolRegistry");
-        Self(HashMap::new())
-    }
-
-    pub fn register(&mut self, tool: Arc<dyn ToolExecutor>) {
-        tracing::debug!("Registering tool: {}", tool.to_tool().name);
-        self.0.insert(tool.to_tool().name.clone(), tool);
-    }
-
-    pub fn list(&self) -> Vec<Tool> {
-        tracing::debug!("Listing tools");
-        self.0.values().map(|t| t.to_tool()).collect()
-    }
-
-    pub async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String> {
-        tracing::debug!("Executing tool: {}", tool);
-        let tool = self
-            .0
-            .get(tool)
-            .ok_or_else(|| anyhow!("Tool not found: {}", tool))?;
-
-        tool.execute(arguments).await
-    }
-}
-
-#[async_trait]
-impl ToolDelegate for ToolRegistry {
-    async fn list(&self) -> Result<Vec<Tool>> {
-        tracing::debug!("Listing tools via ToolDelegate");
-        Ok(self.list())
-    }
-
-    async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String> {
-        tracing::debug!("Executing tool via ToolDelegate: {}", tool);
-        self.execute(tool, arguments).await
-    }
 }
 
 #[async_trait]
