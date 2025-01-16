@@ -222,6 +222,22 @@ pub struct Tool {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ToolContent {
+    Text { text: String },
+    Image { data: String, mime_type: String },
+    Resource { resource: ToolContentResource },
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolContentResource {
+    pub uri: String,
+    pub mime_type: String,
+    pub text: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ContextServerRpcError {
     pub code: ErrorCode,
     pub message: String,
@@ -356,7 +372,8 @@ pub enum ContextServerResult {
     },
     #[serde(rename_all = "camelCase")]
     ToolsCall {
-        tool_result: String,
+        content: Vec<ToolContent>,
+        is_error: bool,
     },
     ResourcesList {
         resources: Vec<Resource>,
@@ -450,7 +467,7 @@ pub trait ResourceDelegate: Send + Sync {
 #[async_trait]
 pub trait ToolDelegate: Send + Sync {
     async fn list(&self) -> Result<Vec<Tool>>;
-    async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<String>;
+    async fn execute(&self, tool: &str, arguments: Option<Value>) -> Result<Vec<ToolContent>>;
 }
 
 #[async_trait]
@@ -571,9 +588,17 @@ impl ContextServer {
             RequestKind::ToolsCall { name, arguments } => {
                 if let Some(tools) = &self.tools {
                     tracing::debug!("Calling tool: {}", name);
-                    let result = tools.execute(&name, arguments).await?;
-                    Ok(ContextServerResult::ToolsCall {
-                        tool_result: result,
+                    Ok(match tools.execute(&name, arguments).await {
+                        Ok(content) => ContextServerResult::ToolsCall {
+                            content,
+                            is_error: false,
+                        },
+                        Err(e) => ContextServerResult::ToolsCall {
+                            content: vec![ToolContent::Text {
+                                text: e.to_string(),
+                            }],
+                            is_error: true,
+                        },
                     })
                 } else {
                     tracing::error!("Tools not available");
