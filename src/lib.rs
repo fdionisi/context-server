@@ -395,7 +395,7 @@ pub type ContextServerRpcResponse =
 
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
-    async fn execute(&self, arguments: Option<Value>) -> Result<ToolContent>;
+    async fn execute(&self, arguments: Option<Value>) -> Result<Vec<ToolContent>>;
     fn to_tool(&self) -> Tool;
 }
 
