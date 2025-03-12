@@ -588,18 +588,18 @@ impl ContextServer {
             RequestKind::ToolsCall { name, arguments } => {
                 if let Some(tools) = &self.tools {
                     tracing::debug!("Calling tool: {}", name);
-                    Ok(match tools.execute(&name, arguments).await {
-                        Ok(content) => ContextServerResult::ToolsCall {
+                    match tools.execute(&name, arguments).await {
+                        Ok(content) => Ok(ContextServerResult::ToolsCall {
                             content,
                             is_error: false,
-                        },
-                        Err(e) => ContextServerResult::ToolsCall {
+                        }),
+                        Err(e) => Ok(ContextServerResult::ToolsCall {
                             content: vec![ToolContent::Text {
                                 text: e.to_string(),
                             }],
                             is_error: true,
-                        },
-                    })
+                        }),
+                    }
                 } else {
                     tracing::error!("Tools not available");
                     Err(anyhow!("Tools not available"))
