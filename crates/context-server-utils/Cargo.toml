@@ -1,0 +1,14 @@
+[package]
+name = "context-server-utils"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/context_server_utils.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+context-server = { path = "../.." }
+parking_lot = "0.12"
+serde_json.workspace = true
