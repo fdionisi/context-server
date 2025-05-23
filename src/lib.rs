@@ -56,77 +56,137 @@ pub enum Version {
     String(String),
 }
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(tag = "method", content = "params")]
+#[serde(rename_all = "camelCase")]
+pub struct InitializeParams {
+    pub protocol_version: String,
+    pub capabilities: ClientCapabilities,
+    pub client_info: EntityInfo,
+}
+
+#[derive(Default, PartialEq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct PromptsListParams {
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptsGetParams {
+    pub name: String,
+    pub arguments: Option<Value>,
+}
+
+#[derive(Default, PartialEq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct ToolsListParams {
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolsCallParams {
+    pub name: String,
+    pub arguments: Option<Value>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourcesUnsubscribeParams {
+    pub uri: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourcesSubscribeParams {
+    pub uri: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourcesReadParams {
+    pub uri: String,
+}
+
+#[derive(Default, PartialEq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct ResourcesListParams {
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoggingSetLevelParams {
+    pub level: LoggingLevel,
+}
+
+#[derive(Default, PartialEq, Debug, serde::Deserialize, serde::Serialize)]
+pub struct PingParams {
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+fn is_empty_params<T: Default + PartialEq>(params: &T) -> bool {
+    params == &T::default()
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "method")]
 pub enum RequestKind {
     #[serde(rename = "initialize", rename_all = "camelCase")]
     Initialize {
-        protocol_version: String,
-        capabilities: ClientCapabilities,
-        client_info: EntityInfo,
+        #[serde(flatten)]
+        params: InitializeParams,
     },
     #[serde(rename = "prompts/list")]
-    #[serde(deserialize_with = "deserialize_empty_or_unit")]
-    PromptsList,
+    PromptsList {
+        #[serde(default, skip_serializing_if = "is_empty_params")]
+        params: PromptsListParams,
+    },
     #[serde(rename = "prompts/get", rename_all = "camelCase")]
     PromptsGet {
-        name: String,
-        arguments: Option<Value>,
+        #[serde(flatten)]
+        params: PromptsGetParams,
     },
     #[serde(rename = "tools/list")]
-    #[serde(deserialize_with = "deserialize_empty_or_unit")]
-    ToolsList,
+    ToolsList {
+        #[serde(default, skip_serializing_if = "is_empty_params")]
+        params: ToolsListParams,
+    },
     #[serde(rename = "tools/call", rename_all = "camelCase")]
     ToolsCall {
-        name: String,
-        arguments: Option<Value>,
+        #[serde(flatten)]
+        params: ToolsCallParams,
     },
     #[serde(rename = "resources/unsubscribe", rename_all = "camelCase")]
-    ResourcesUnsubscribe { uri: String },
+    ResourcesUnsubscribe {
+        #[serde(flatten)]
+        params: ResourcesUnsubscribeParams,
+    },
     #[serde(rename = "resources/subscribe", rename_all = "camelCase")]
-    ResourcesSubscribe { uri: String },
+    ResourcesSubscribe {
+        #[serde(flatten)]
+        params: ResourcesSubscribeParams,
+    },
     #[serde(rename = "resources/read", rename_all = "camelCase")]
-    ResourcesRead { uri: String },
+    ResourcesRead {
+        #[serde(flatten)]
+        params: ResourcesReadParams,
+    },
     #[serde(rename = "resources/list")]
-    #[serde(deserialize_with = "deserialize_empty_or_unit")]
-    ResourcesList,
-    #[serde(rename = "sampling/createMessage", rename_all = "camelCase")]
-    SamplingCreateMessage(SamplingRequest),
+    ResourcesList {
+        #[serde(default, skip_serializing_if = "is_empty_params")]
+        params: ResourcesListParams,
+    },
     #[serde(rename = "logging/setLevel", rename_all = "camelCase")]
-    LoggingSetLevel { level: LoggingLevel },
+    LoggingSetLevel {
+        #[serde(flatten)]
+        params: LoggingSetLevelParams,
+    },
     #[serde(rename = "ping")]
-    #[serde(deserialize_with = "deserialize_empty_or_unit")]
-    Ping,
-}
-
-fn deserialize_empty_or_unit<'de, D>(deserializer: D) -> Result<(), D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct EmptyOrUnit;
-
-    impl<'de> serde::de::Visitor<'de> for EmptyOrUnit {
-        type Value = ();
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("empty object or unit")
-        }
-
-        fn visit_unit<E>(self) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(())
-        }
-
-        fn visit_map<M>(self, _: M) -> Result<Self::Value, M::Error>
-        where
-            M: serde::de::MapAccess<'de>,
-        {
-            Ok(())
-        }
-    }
-
-    deserializer.deserialize_any(EmptyOrUnit)
+    Ping {
+        #[serde(default, skip_serializing_if = "is_empty_params")]
+        params: PingParams,
+    },
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -530,10 +590,8 @@ impl ContextServer {
     async fn process_request(&self, request: RequestKind) -> Result<ContextServerResult> {
         tracing::debug!("Processing request: {:?}", request);
         match request {
-            RequestKind::Initialize {
-                protocol_version, ..
-            } => Ok(ContextServerResult::Initialize {
-                protocol_version,
+            RequestKind::Initialize { params } => Ok(ContextServerResult::Initialize {
+                protocol_version: params.protocol_version,
                 server_info: self.server_info.clone(),
                 capabilities: ServerCapabilities {
                     meta: None,
@@ -545,7 +603,7 @@ impl ContextServer {
                     sampling: self.sampling.as_ref().map(|_| Default::default()),
                 },
             }),
-            RequestKind::PromptsList => {
+            RequestKind::PromptsList { .. } => {
                 if let Some(prompts) = &self.prompts {
                     tracing::debug!("Listing prompts");
                     Ok(ContextServerResult::PromptsList {
@@ -557,13 +615,13 @@ impl ContextServer {
                     Err(anyhow!("Prompts not available"))
                 }
             }
-            RequestKind::PromptsGet { name, arguments } => {
+            RequestKind::PromptsGet { params } => {
                 if let Some(prompts) = &self.prompts {
-                    tracing::debug!("Getting prompt: {}", name);
+                    tracing::debug!("Getting prompt: {}", params.name);
                     let ComputedPrompt {
                         description,
                         messages,
-                    } = prompts.compute(&name, arguments).await?;
+                    } = prompts.compute(&params.name, params.arguments).await?;
                     Ok(ContextServerResult::PromptsGet {
                         description,
                         messages,
@@ -573,7 +631,7 @@ impl ContextServer {
                     Err(anyhow!("Prompts not available"))
                 }
             }
-            RequestKind::ToolsList => {
+            RequestKind::ToolsList { .. } => {
                 if let Some(tools) = &self.tools {
                     tracing::debug!("Listing tools");
                     Ok(ContextServerResult::ToolsList {
@@ -585,10 +643,10 @@ impl ContextServer {
                     Err(anyhow!("Tools not available"))
                 }
             }
-            RequestKind::ToolsCall { name, arguments } => {
+            RequestKind::ToolsCall { params } => {
                 if let Some(tools) = &self.tools {
-                    tracing::debug!("Calling tool: {}", name);
-                    match tools.execute(&name, arguments).await {
+                    tracing::debug!("Calling tool: {}", params.name);
+                    match tools.execute(&params.name, params.arguments).await {
                         Ok(content) => Ok(ContextServerResult::ToolsCall {
                             content,
                             is_error: false,
@@ -605,17 +663,7 @@ impl ContextServer {
                     Err(anyhow!("Tools not available"))
                 }
             }
-            RequestKind::SamplingCreateMessage(sampling_request) => {
-                if let Some(sampling) = &self.sampling {
-                    tracing::debug!("Creating sampling message");
-                    let messages = sampling.create_message(sampling_request).await?;
-                    Ok(ContextServerResult::SamplingCreateMessage { messages })
-                } else {
-                    tracing::error!("Sampling not available");
-                    Err(anyhow!("Sampling not available"))
-                }
-            }
-            RequestKind::ResourcesList => {
+            RequestKind::ResourcesList { .. } => {
                 if let Some(resources) = &self.resources {
                     tracing::debug!("Listing resources");
                     Ok(ContextServerResult::ResourcesList {
@@ -627,10 +675,10 @@ impl ContextServer {
                     Err(anyhow!("Resources not available"))
                 }
             }
-            RequestKind::ResourcesRead { uri } => {
+            RequestKind::ResourcesRead { params } => {
                 if let Some(resources) = &self.resources {
-                    tracing::debug!("Reading resource: {}", uri);
-                    let content = resources.read(&uri).await?;
+                    tracing::debug!("Reading resource: {}", params.uri);
+                    let content = resources.read(&params.uri).await?;
                     Ok(ContextServerResult::ResourcesRead {
                         contents: vec![content],
                     })
@@ -639,10 +687,10 @@ impl ContextServer {
                     Err(anyhow!("Resources not available"))
                 }
             }
-            RequestKind::ResourcesUnsubscribe { uri } => {
+            RequestKind::ResourcesUnsubscribe { params } => {
                 if let Some(resources) = &self.resources {
-                    tracing::debug!("Unsubscribing from resource: {}", uri);
-                    resources.unsubscribe(&uri).await?;
+                    tracing::debug!("Unsubscribing from resource: {}", params.uri);
+                    resources.unsubscribe(&params.uri).await?;
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
                         next_cursor: None,
@@ -652,10 +700,10 @@ impl ContextServer {
                     Err(anyhow!("Resources not available"))
                 }
             }
-            RequestKind::ResourcesSubscribe { uri } => {
+            RequestKind::ResourcesSubscribe { params } => {
                 if let Some(resources) = &self.resources {
-                    tracing::debug!("Subscribing to resource: {}", uri);
-                    resources.subscribe(&uri).await?;
+                    tracing::debug!("Subscribing to resource: {}", params.uri);
+                    resources.subscribe(&params.uri).await?;
                     Ok(ContextServerResult::ResourcesList {
                         resources: resources.list().await?,
                         next_cursor: None,
@@ -665,7 +713,7 @@ impl ContextServer {
                     Err(anyhow!("Resources not available"))
                 }
             }
-            RequestKind::Ping => {
+            RequestKind::Ping { .. } => {
                 tracing::debug!("Received ping request");
                 Ok(ContextServerResult::Pong {})
             }
@@ -765,18 +813,25 @@ impl ContextServerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jsonrpc_types::{Header, Version};
     use serde_json::json;
 
     #[test]
     fn test_serialize_request_kind() {
         let cases = vec![
-            (RequestKind::PromptsList, json!({"method": "prompts/list"})),
-            (RequestKind::ToolsList, json!({"method": "tools/list"})),
             (
-                RequestKind::ResourcesList,
+                RequestKind::PromptsList { params: PromptsListParams::default() },
+                json!({"method": "prompts/list"}),
+            ),
+            (
+                RequestKind::ToolsList { params: ToolsListParams::default() },
+                json!({"method": "tools/list"}),
+            ),
+            (
+                RequestKind::ResourcesList { params: ResourcesListParams::default() },
                 json!({"method": "resources/list"}),
             ),
-            (RequestKind::Ping, json!({"method": "ping"})),
+            (RequestKind::Ping { params: PingParams::default() }, json!({"method": "ping"})),
         ];
 
         for (kind, expected_json) in cases {
@@ -788,22 +843,28 @@ mod tests {
     #[test]
     fn test_deserialize_request_kind() {
         let cases = vec![
-            (json!({"method": "prompts/list"}), RequestKind::PromptsList),
-            (json!({"method": "tools/list"}), RequestKind::ToolsList),
+            (
+                json!({"method": "prompts/list"}),
+                RequestKind::PromptsList { params: PromptsListParams::default() },
+            ),
+            (
+                json!({"method": "tools/list"}),
+                RequestKind::ToolsList { params: ToolsListParams::default() },
+            ),
             (
                 json!({"method": "resources/list"}),
-                RequestKind::ResourcesList,
+                RequestKind::ResourcesList { params: ResourcesListParams::default() },
             ),
-            (json!({"method": "ping"}), RequestKind::Ping),
+            (json!({"method": "ping"}), RequestKind::Ping { params: PingParams::default() }),
         ];
 
         for (json, expected_kind) in cases {
             let deserialized: RequestKind = serde_json::from_value(json).unwrap();
             match (expected_kind, deserialized) {
-                (RequestKind::PromptsList, RequestKind::PromptsList) => {}
-                (RequestKind::ToolsList, RequestKind::ToolsList) => {}
-                (RequestKind::ResourcesList, RequestKind::ResourcesList) => {}
-                (RequestKind::Ping, RequestKind::Ping) => {}
+                (RequestKind::PromptsList { .. }, RequestKind::PromptsList { .. }) => {}
+                (RequestKind::ToolsList { .. }, RequestKind::ToolsList { .. }) => {}
+                (RequestKind::ResourcesList { .. }, RequestKind::ResourcesList { .. }) => {}
+                (RequestKind::Ping { .. }, RequestKind::Ping { .. }) => {}
                 _ => panic!("Deserialization mismatch"),
             }
         }
@@ -814,28 +875,57 @@ mod tests {
         let cases = vec![
             (
                 json!({"method": "prompts/list", "params": {}}),
-                RequestKind::PromptsList,
+                RequestKind::PromptsList { params: PromptsListParams::default() },
             ),
             (
                 json!({"method": "tools/list", "params": {}}),
-                RequestKind::ToolsList,
+                RequestKind::ToolsList { params: ToolsListParams::default() },
             ),
             (
                 json!({"method": "resources/list", "params": {}}),
-                RequestKind::ResourcesList,
+                RequestKind::ResourcesList { params: ResourcesListParams::default() },
             ),
-            (json!({"method": "ping", "params": {}}), RequestKind::Ping),
+            (
+                json!({"method": "ping", "params": {}}),
+                RequestKind::Ping { params: PingParams::default() },
+            ),
         ];
 
         for (json, expected_kind) in cases {
             let deserialized: RequestKind = serde_json::from_value(json).unwrap();
             match (expected_kind, deserialized) {
-                (RequestKind::PromptsList, RequestKind::PromptsList) => {}
-                (RequestKind::ToolsList, RequestKind::ToolsList) => {}
-                (RequestKind::ResourcesList, RequestKind::ResourcesList) => {}
-                (RequestKind::Ping, RequestKind::Ping) => {}
+                (RequestKind::PromptsList { .. }, RequestKind::PromptsList { .. }) => {}
+                (RequestKind::ToolsList { .. }, RequestKind::ToolsList { .. }) => {}
+                (RequestKind::ResourcesList { .. }, RequestKind::ResourcesList { .. }) => {}
+                (RequestKind::Ping { .. }, RequestKind::Ping { .. }) => {}
                 _ => panic!("Deserialization mismatch"),
             }
         }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_full_jsonrpc_request() {
+        let original_request = ContextServerRpcRequest {
+            header: Header {
+                jsonrpc: Version::Two,
+                id: Some(1),
+            },
+            payload: ContextServerMethod::Reqest(RequestKind::PromptsList { params: PromptsListParams::default() }),
+        };
+
+        let _ = serde_json::to_string(&original_request).unwrap();
+
+        let json_str = r#"{"jsonrpc":"2.0","id":1,"method":"prompts/list","params":{"_meta":{"progressToken":1}}}"#;
+        let deserialized: ContextServerRpcRequest = serde_json::from_str(json_str).unwrap();
+
+        match deserialized.payload {
+            ContextServerMethod::Reqest(RequestKind::PromptsList { params }) => {
+                assert!(params.meta.is_some());
+            }
+            _ => panic!("Failed to deserialize to the expected method"),
+        }
+
+        assert_eq!(deserialized.header.jsonrpc, Version::Two);
+        assert_eq!(deserialized.header.id, Some(1));
     }
 }

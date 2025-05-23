@@ -1,15 +1,19 @@
 [package]
 name = "context-server"
-version = "0.8.3"
+version = "0.9.0"
 edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-jsonrpc-types = { git = "https://github.com/fdionisi/jsonrpc-types", version = "0.1" }
+futures = "0.3"
+jsonrpc-types = { git = "https://github.com/fdionisi/jsonrpc-types", version = "0.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
 tracing = { version = "0.1" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
 
 [workspace]
 resolver = "2"
