@@ -133,55 +133,34 @@ fn is_empty_params<T: Default + PartialEq>(params: &T) -> bool {
 #[serde(tag = "method")]
 pub enum RequestKind {
     #[serde(rename = "initialize", rename_all = "camelCase")]
-    Initialize {
-        #[serde(flatten)]
-        params: InitializeParams,
-    },
+    Initialize { params: InitializeParams },
     #[serde(rename = "prompts/list")]
     PromptsList {
         #[serde(default, skip_serializing_if = "is_empty_params")]
         params: PromptsListParams,
     },
     #[serde(rename = "prompts/get", rename_all = "camelCase")]
-    PromptsGet {
-        #[serde(flatten)]
-        params: PromptsGetParams,
-    },
+    PromptsGet { params: PromptsGetParams },
     #[serde(rename = "tools/list")]
     ToolsList {
         #[serde(default, skip_serializing_if = "is_empty_params")]
         params: ToolsListParams,
     },
     #[serde(rename = "tools/call", rename_all = "camelCase")]
-    ToolsCall {
-        #[serde(flatten)]
-        params: ToolsCallParams,
-    },
+    ToolsCall { params: ToolsCallParams },
     #[serde(rename = "resources/unsubscribe", rename_all = "camelCase")]
-    ResourcesUnsubscribe {
-        #[serde(flatten)]
-        params: ResourcesUnsubscribeParams,
-    },
+    ResourcesUnsubscribe { params: ResourcesUnsubscribeParams },
     #[serde(rename = "resources/subscribe", rename_all = "camelCase")]
-    ResourcesSubscribe {
-        #[serde(flatten)]
-        params: ResourcesSubscribeParams,
-    },
+    ResourcesSubscribe { params: ResourcesSubscribeParams },
     #[serde(rename = "resources/read", rename_all = "camelCase")]
-    ResourcesRead {
-        #[serde(flatten)]
-        params: ResourcesReadParams,
-    },
+    ResourcesRead { params: ResourcesReadParams },
     #[serde(rename = "resources/list")]
     ResourcesList {
         #[serde(default, skip_serializing_if = "is_empty_params")]
         params: ResourcesListParams,
     },
     #[serde(rename = "logging/setLevel", rename_all = "camelCase")]
-    LoggingSetLevel {
-        #[serde(flatten)]
-        params: LoggingSetLevelParams,
-    },
+    LoggingSetLevel { params: LoggingSetLevelParams },
     #[serde(rename = "ping")]
     Ping {
         #[serde(default, skip_serializing_if = "is_empty_params")]
@@ -820,18 +799,29 @@ mod tests {
     fn test_serialize_request_kind() {
         let cases = vec![
             (
-                RequestKind::PromptsList { params: PromptsListParams::default() },
+                RequestKind::PromptsList {
+                    params: PromptsListParams::default(),
+                },
                 json!({"method": "prompts/list"}),
             ),
             (
-                RequestKind::ToolsList { params: ToolsListParams::default() },
+                RequestKind::ToolsList {
+                    params: ToolsListParams::default(),
+                },
                 json!({"method": "tools/list"}),
             ),
             (
-                RequestKind::ResourcesList { params: ResourcesListParams::default() },
+                RequestKind::ResourcesList {
+                    params: ResourcesListParams::default(),
+                },
                 json!({"method": "resources/list"}),
             ),
-            (RequestKind::Ping { params: PingParams::default() }, json!({"method": "ping"})),
+            (
+                RequestKind::Ping {
+                    params: PingParams::default(),
+                },
+                json!({"method": "ping"}),
+            ),
         ];
 
         for (kind, expected_json) in cases {
@@ -845,17 +835,28 @@ mod tests {
         let cases = vec![
             (
                 json!({"method": "prompts/list"}),
-                RequestKind::PromptsList { params: PromptsListParams::default() },
+                RequestKind::PromptsList {
+                    params: PromptsListParams::default(),
+                },
             ),
             (
                 json!({"method": "tools/list"}),
-                RequestKind::ToolsList { params: ToolsListParams::default() },
+                RequestKind::ToolsList {
+                    params: ToolsListParams::default(),
+                },
             ),
             (
                 json!({"method": "resources/list"}),
-                RequestKind::ResourcesList { params: ResourcesListParams::default() },
+                RequestKind::ResourcesList {
+                    params: ResourcesListParams::default(),
+                },
             ),
-            (json!({"method": "ping"}), RequestKind::Ping { params: PingParams::default() }),
+            (
+                json!({"method": "ping"}),
+                RequestKind::Ping {
+                    params: PingParams::default(),
+                },
+            ),
         ];
 
         for (json, expected_kind) in cases {
@@ -875,19 +876,27 @@ mod tests {
         let cases = vec![
             (
                 json!({"method": "prompts/list", "params": {}}),
-                RequestKind::PromptsList { params: PromptsListParams::default() },
+                RequestKind::PromptsList {
+                    params: PromptsListParams::default(),
+                },
             ),
             (
                 json!({"method": "tools/list", "params": {}}),
-                RequestKind::ToolsList { params: ToolsListParams::default() },
+                RequestKind::ToolsList {
+                    params: ToolsListParams::default(),
+                },
             ),
             (
                 json!({"method": "resources/list", "params": {}}),
-                RequestKind::ResourcesList { params: ResourcesListParams::default() },
+                RequestKind::ResourcesList {
+                    params: ResourcesListParams::default(),
+                },
             ),
             (
                 json!({"method": "ping", "params": {}}),
-                RequestKind::Ping { params: PingParams::default() },
+                RequestKind::Ping {
+                    params: PingParams::default(),
+                },
             ),
         ];
 
@@ -910,7 +919,9 @@ mod tests {
                 jsonrpc: Version::Two,
                 id: Some(1),
             },
-            payload: ContextServerMethod::Reqest(RequestKind::PromptsList { params: PromptsListParams::default() }),
+            payload: ContextServerMethod::Reqest(RequestKind::PromptsList {
+                params: PromptsListParams::default(),
+            }),
         };
 
         let _ = serde_json::to_string(&original_request).unwrap();
@@ -927,5 +938,23 @@ mod tests {
 
         assert_eq!(deserialized.header.jsonrpc, Version::Two);
         assert_eq!(deserialized.header.id, Some(1));
+    }
+
+    #[test]
+    fn test_deserialize_initialize_request() {
+        let json_str = r#"{"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"claude-ai","version":"0.1.0"}},"jsonrpc":"2.0","id":0}"#;
+        let deserialized: ContextServerRpcRequest = serde_json::from_str(json_str).unwrap();
+
+        match deserialized.payload {
+            ContextServerMethod::Reqest(RequestKind::Initialize { params }) => {
+                assert_eq!(params.protocol_version, "2024-11-05");
+                assert_eq!(params.client_info.name, "claude-ai");
+                assert_eq!(params.client_info.version, "0.1.0");
+            }
+            _ => panic!("Failed to deserialize to the expected initialize method"),
+        }
+
+        assert_eq!(deserialized.header.jsonrpc, Version::Two);
+        assert_eq!(deserialized.header.id, Some(0));
     }
 }
